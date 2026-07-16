@@ -1,0 +1,440 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>High-Risk Guard 승인</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0f1115;
+    --card: #1a1d24;
+    --danger: #ff5757;
+    --warn: #ffb020;
+    --ok: #2ecc71;
+    --text: #eef0f4;
+    --muted: #9aa1ac;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  body {
+    display: flex; align-items: center; justify-content: center;
+    padding: 20px;
+  }
+  .screen { display: none; width: 100%; max-width: 420px; }
+  .screen.active { display: block; }
+
+  .card {
+    background: var(--card); border-radius: 16px; padding: 20px;
+    border: 1px solid #2a2e37;
+  }
+  h1 { font-size: 1.1rem; margin: 0 0 4px; }
+  h2 { font-size: 1.4rem; margin: 0 0 12px; }
+  p { line-height: 1.5; }
+  .muted { color: var(--muted); font-size: 0.85rem; }
+
+  .badge {
+    display: inline-block; padding: 2px 8px; border-radius: 999px;
+    background: #3a1f1f; color: var(--danger); font-size: 0.75rem;
+    margin: 2px 4px 2px 0;
+  }
+  .diff-box {
+    background: #0d0f13; border-radius: 10px; padding: 12px; margin: 12px 0;
+    font-family: ui-monospace, monospace; font-size: 0.85rem; white-space: pre-wrap;
+    max-height: 200px; overflow-y: auto;
+  }
+
+  button {
+    width: 100%; padding: 14px; border-radius: 12px; border: none;
+    font-size: 1rem; font-weight: 600; margin-top: 16px;
+    background: #333844; color: var(--muted); cursor: not-allowed;
+  }
+  button.ready { background: var(--danger); color: white; cursor: pointer; }
+
+  .gauge-wrap { margin: 24px 0; }
+  .gauge-track {
+    position: relative; height: 14px; border-radius: 999px;
+    background: #0d0f13; overflow: visible;
+  }
+  .gauge-target-zone {
+    position: absolute; top: 0; bottom: 0; background: rgba(46, 204, 113, 0.25);
+    border-radius: 999px;
+  }
+  .gauge-center-mark {
+    position: absolute; top: -4px; bottom: -4px; width: 2px; background: #555; left: 50%;
+  }
+  .gauge-dot {
+    position: absolute; top: -7px; width: 28px; height: 28px; margin-left: -14px;
+    border-radius: 50%; background: var(--warn); transition: background 0.15s;
+    box-shadow: 0 0 0 4px rgba(0,0,0,0.3);
+  }
+  .gauge-dot.in-range { background: var(--ok); }
+  .gauge-labels { display: flex; justify-content: space-between; margin-top: 8px; }
+
+  .progress-ring-wrap { display: flex; justify-content: center; margin: 20px 0; }
+  .hold-progress-track {
+    width: 100%; height: 10px; border-radius: 999px; background: #0d0f13; overflow: hidden;
+  }
+  .hold-progress-fill {
+    height: 100%; width: 0%; background: var(--ok); transition: width 0.05s linear;
+  }
+
+  .result-icon { font-size: 3rem; text-align: center; margin-bottom: 8px; }
+  .result-title { text-align: center; font-size: 1.3rem; font-weight: 700; }
+  .result-reason { text-align: center; margin-top: 8px; color: var(--muted); }
+
+  .countdown { font-variant-numeric: tabular-nums; font-weight: 700; }
+</style>
+</head>
+<body>
+
+  <section id="screen-loading" class="screen active">
+    <div class="card">
+      <h2>연결 중...</h2>
+      <p class="muted">승인 요청을 불러오는 중입니다.</p>
+    </div>
+  </section>
+
+  <section id="screen-unsupported" class="screen">
+    <div class="card">
+      <h2>지원되지 않는 기기</h2>
+      <p>이 화면은 자이로스코프(DeviceOrientation)를 지원하는 모바일 브라우저에서만 동작합니다.
+      PC 환경 또는 미지원 브라우저에서는 물리적 제스처 승인을 진행할 수 없습니다.</p>
+    </div>
+  </section>
+
+  <section id="screen-step1" class="screen">
+    <div class="card">
+      <h1>고위험 작업 승인 요청</h1>
+      <h2 id="s1-file-path">-</h2>
+      <div>
+        <span id="s1-keywords"></span>
+        <span id="s1-paths"></span>
+      </div>
+      <div class="diff-box" id="s1-diff-summary"></div>
+      <p class="muted">
+        이 내용을 최소 <span id="s1-min-seconds">5</span>초간 반드시 확인해야 다음 단계로
+        진행할 수 있습니다. (<span class="countdown" id="s1-countdown">5</span>초 남음)
+      </p>
+      <button id="s1-next-btn" disabled>확인했습니다 — 다음</button>
+    </div>
+  </section>
+
+  <section id="screen-step2" class="screen">
+    <div class="card">
+      <h1>물리적 제스처 승인</h1>
+      <h2 id="s2-direction-text">기기를 기울여주세요</h2>
+      <p class="muted">목표 각도까지 기울인 뒤, 그 상태로 1초간 유지하세요.</p>
+
+      <div class="gauge-wrap">
+        <div class="gauge-track" id="s2-gauge-track">
+          <div class="gauge-target-zone" id="s2-target-zone"></div>
+          <div class="gauge-center-mark"></div>
+          <div class="gauge-dot" id="s2-dot"></div>
+        </div>
+        <div class="gauge-labels muted">
+          <span>-30°</span><span>0</span><span>+30°</span>
+        </div>
+      </div>
+
+      <p class="muted">현재 각도: <span id="s2-current-angle">0.0</span>°</p>
+
+      <div class="progress-ring-wrap">
+        <div class="hold-progress-track">
+          <div class="hold-progress-fill" id="s2-hold-fill"></div>
+        </div>
+      </div>
+      <p class="muted" id="s2-status-text">기울이는 중...</p>
+    </div>
+  </section>
+
+  <section id="screen-waiting-result" class="screen">
+    <div class="card">
+      <h2>확인 중...</h2>
+      <p class="muted">서버에서 제스처를 검증하고 있습니다.</p>
+    </div>
+  </section>
+
+  <section id="screen-result" class="screen">
+    <div class="card">
+      <div class="result-icon" id="result-icon">✅</div>
+      <div class="result-title" id="result-title">승인 완료</div>
+      <div class="result-reason" id="result-reason"></div>
+    </div>
+  </section>
+
+<script>
+(function () {
+  "use strict";
+
+  // ---- constants (display-only; the server is authoritative on all of this) ----
+  var GAUGE_MIN_DEG = -30;
+  var GAUGE_MAX_DEG = 30;
+
+  var params = new URLSearchParams(location.search);
+  var requestId = params.get("request_id");
+
+  var screens = {};
+  ["loading", "unsupported", "step1", "step2", "waiting-result", "result"].forEach(function (name) {
+    screens[name] = document.getElementById("screen-" + name);
+  });
+
+  // Exactly one screen visible at a time, by construction — this is what
+  // structurally prevents REQ-002 (forced exposure) and REQ-003 (gesture)
+  // from ever being shown together.
+  function showScreen(name) {
+    Object.keys(screens).forEach(function (key) {
+      screens[key].classList.toggle("active", key === name);
+    });
+  }
+
+  if (!requestId) {
+    document.getElementById("screen-loading").querySelector("p").textContent =
+      "request_id가 없습니다. 승인 요청 링크로 접속해주세요.";
+    return;
+  }
+
+  // ---------------- WebSocket ----------------
+  var proto = location.protocol === "https:" ? "wss" : "ws";
+  var ws = new WebSocket(proto + "://" + location.host + "/ws/" + requestId);
+
+  var step1MinSeconds = 5;
+  var step1CountdownTimer = null;
+  var gestureCleanup = null; // set while screen-step2 is active; removes the orientation listener
+
+  ws.onopen = function () {};
+  ws.onerror = function () {
+    showScreen("loading");
+    document.querySelector("#screen-loading p").textContent =
+      "연결에 실패했습니다. 새로고침 해주세요.";
+  };
+  ws.onclose = function () {
+    if (gestureCleanup) gestureCleanup();
+    // Full fail-closed handling (auto-abort on disconnect) is Phase 3 scope;
+    // for now we just stop and tell the approver so nothing hangs silently.
+    var resultScreenActive = screens["result"].classList.contains("active");
+    if (!resultScreenActive) {
+      showScreen("waiting-result");
+      document.querySelector("#screen-waiting-result p").textContent =
+        "연결이 끊어졌습니다. (Fail-Closed 처리는 Phase 3에서 연결됩니다)";
+    }
+  };
+
+  ws.onmessage = function (evt) {
+    var msg = JSON.parse(evt.data);
+    if (msg.type === "state") {
+      handleState(msg);
+    } else if (msg.type === "error") {
+      handleError(msg);
+    }
+  };
+
+  function handleError(msg) {
+    if (msg.reason === "step1_too_early") {
+      // Server disagreed with our local clock; resync the countdown to the
+      // server's authoritative remaining time instead of trusting our own.
+      startStep1Countdown(msg.remaining_seconds);
+    } else if (msg.reason === "wrong_phase") {
+      // Ignore: this only happens if messages arrive out of order.
+    } else {
+      console.warn("server error:", msg.reason);
+    }
+  }
+
+  function handleState(state) {
+    if (state.status === "pending_ack") {
+      renderStep1(state);
+      showScreen("step1");
+    } else if (state.status === "awaiting_gesture") {
+      renderStep2(state);
+      showScreen("step2");
+    } else if (state.status === "approved" || state.status === "rejected") {
+      if (gestureCleanup) gestureCleanup();
+      renderResult(state);
+      showScreen("result");
+    }
+  }
+
+  // ---------------- Step 1: forced risk exposure (REQ-002) ----------------
+  function renderStep1(state) {
+    step1MinSeconds = state.step1_min_seconds;
+    document.getElementById("s1-file-path").textContent = state.risk.file_path;
+    document.getElementById("s1-diff-summary").textContent = state.risk.diff_summary;
+    document.getElementById("s1-min-seconds").textContent = step1MinSeconds;
+
+    var kwHtml = state.risk.matched_keywords.map(function (k) {
+      return '<span class="badge">키워드: ' + escapeHtml(k) + "</span>";
+    }).join("");
+    var pathHtml = state.risk.matched_paths.map(function (p) {
+      return '<span class="badge">경로: ' + escapeHtml(p) + "</span>";
+    }).join("");
+    document.getElementById("s1-keywords").innerHTML = kwHtml;
+    document.getElementById("s1-paths").innerHTML = pathHtml;
+
+    var remaining = Math.max(0, step1MinSeconds - (state.elapsed_seconds || 0));
+    startStep1Countdown(remaining);
+
+    var btn = document.getElementById("s1-next-btn");
+    btn.onclick = function () {
+      if (!btn.classList.contains("ready")) return;
+      // iOS 13+ requires DeviceOrientationEvent.requestPermission() to be
+      // called synchronously within a user gesture — this click handler is
+      // that gesture, so we request permission here, *before* the server
+      // has even acknowledged step1_ack.
+      requestOrientationPermissionIfNeeded().then(function () {
+        ws.send(JSON.stringify({ type: "step1_ack" }));
+      });
+    };
+  }
+
+  function startStep1Countdown(remainingSeconds) {
+    var btn = document.getElementById("s1-next-btn");
+    var countdownEl = document.getElementById("s1-countdown");
+    btn.disabled = true;
+    btn.classList.remove("ready");
+    if (step1CountdownTimer) clearInterval(step1CountdownTimer);
+
+    var remaining = remainingSeconds;
+    countdownEl.textContent = Math.ceil(remaining);
+    step1CountdownTimer = setInterval(function () {
+      remaining -= 0.1;
+      if (remaining <= 0) {
+        clearInterval(step1CountdownTimer);
+        countdownEl.textContent = "0";
+        btn.disabled = false;
+        btn.classList.add("ready");
+        btn.textContent = "확인했습니다 — 다음";
+      } else {
+        countdownEl.textContent = Math.ceil(remaining);
+      }
+    }, 100);
+  }
+
+  function requestOrientationPermissionIfNeeded() {
+    if (typeof DeviceOrientationEvent !== "undefined" &&
+        typeof DeviceOrientationEvent.requestPermission === "function") {
+      return DeviceOrientationEvent.requestPermission().catch(function () {
+        return "denied";
+      });
+    }
+    return Promise.resolve("granted");
+  }
+
+  // ---------------- Step 2: physical gesture (REQ-003/REQ-004) ----------------
+  function renderStep2(state) {
+    if (typeof window.DeviceOrientationEvent === "undefined") {
+      showScreen("unsupported");
+      return;
+    }
+
+    var targetAngle = state.target_angle;
+    var tolerance = state.tolerance;
+    var holdDurationMs = state.hold_duration_ms;
+
+    document.getElementById("s2-direction-text").textContent =
+      state.target_direction === "right"
+        ? "화면을 오른쪽으로 기울이세요"
+        : "화면을 왼쪽으로 기울이세요";
+
+    // Position the green target zone and center mark on the gauge track.
+    var track = document.getElementById("s2-gauge-track");
+    var toPct = function (deg) {
+      return ((deg - GAUGE_MIN_DEG) / (GAUGE_MAX_DEG - GAUGE_MIN_DEG)) * 100;
+    };
+    var zone = document.getElementById("s2-target-zone");
+    var loPct = toPct(targetAngle - tolerance);
+    var hiPct = toPct(targetAngle + tolerance);
+    zone.style.left = loPct + "%";
+    zone.style.width = (hiPct - loPct) + "%";
+
+    var dot = document.getElementById("s2-dot");
+    var currentAngleEl = document.getElementById("s2-current-angle");
+    var holdFill = document.getElementById("s2-hold-fill");
+    var statusText = document.getElementById("s2-status-text");
+
+    var phaseStart = performance.now();
+    var samples = [];
+    var rangeEnterTime = null;
+    var finished = false;
+
+    function onOrientation(ev) {
+      if (finished) return;
+      var gamma = ev.gamma;
+      if (gamma === null || gamma === undefined) return;
+      var tMs = performance.now() - phaseStart;
+      samples.push({ t_ms: tMs, gamma: gamma });
+
+      var clamped = Math.max(GAUGE_MIN_DEG, Math.min(GAUGE_MAX_DEG, gamma));
+      dot.style.left = toPct(clamped) + "%";
+      currentAngleEl.textContent = gamma.toFixed(1);
+
+      var inRange = gamma >= (targetAngle - tolerance) && gamma <= (targetAngle + tolerance);
+      dot.classList.toggle("in-range", inRange);
+
+      if (inRange) {
+        if (rangeEnterTime === null) rangeEnterTime = tMs;
+        var heldMs = tMs - rangeEnterTime;
+        var pct = Math.min(100, (heldMs / holdDurationMs) * 100);
+        holdFill.style.width = pct + "%";
+        statusText.textContent = "유지하는 중... (" + Math.min(heldMs, holdDurationMs).toFixed(0) + "ms / " + holdDurationMs + "ms)";
+
+        if (heldMs >= holdDurationMs) {
+          finished = true;
+          statusText.textContent = "확인 중...";
+          ws.send(JSON.stringify({
+            type: "gesture_result",
+            samples: samples,
+            hold_start_t_ms: rangeEnterTime,
+            hold_end_t_ms: tMs,
+          }));
+          showScreen("waiting-result");
+        }
+      } else {
+        rangeEnterTime = null;
+        holdFill.style.width = "0%";
+        statusText.textContent = "목표 범위로 기울여주세요";
+      }
+    }
+
+    window.addEventListener("deviceorientation", onOrientation);
+    gestureCleanup = function () {
+      window.removeEventListener("deviceorientation", onOrientation);
+      gestureCleanup = null;
+    };
+  }
+
+  // ---------------- Result ----------------
+  var REJECT_REASON_LABELS = {
+    no_movement_detected: "기기가 움직이지 않았습니다 (단순 탭으로 판단됨)",
+    mechanical_pattern_detected: "기계적으로 반복되는 패턴이 감지되었습니다",
+    hold_out_of_range: "목표 각도를 벗어났습니다",
+    hold_too_short: "유지 시간이 1초 미만입니다",
+    insufficient_samples: "센서 데이터가 충분하지 않습니다",
+    timeout_fail_closed: "제한 시간 내에 제스처가 완료되지 않았습니다 (Fail-Closed)",
+    disconnected_fail_closed: "연결이 끊어져 요청이 자동으로 폐기되었습니다 (Fail-Closed)",
+    abandoned_no_response: "응답 시간이 초과되어 요청이 만료되었습니다. 새로 요청해주세요.",
+  };
+
+  function renderResult(state) {
+    var approved = state.status === "approved";
+    document.getElementById("result-icon").textContent = approved ? "✅" : "❌";
+    document.getElementById("result-title").textContent = approved ? "승인 완료" : "승인 거부됨";
+    document.getElementById("result-title").style.color = approved ? "var(--ok)" : "var(--danger)";
+    document.getElementById("result-reason").textContent = approved
+      ? ""
+      : (REJECT_REASON_LABELS[state.result_reason] || state.result_reason || "");
+  }
+
+  function escapeHtml(s) {
+    var div = document.createElement("div");
+    div.textContent = s;
+    return div.innerHTML;
+  }
+})();
+</script>
+</body>
+</html>

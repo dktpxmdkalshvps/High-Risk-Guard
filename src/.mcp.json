@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "high-risk-guard": {
+      "command": "python",
+      "args": ["-m", "mcp_server.server"],
+      "env": {
+        "PYTHONPATH": "."
+      }
+    }
+  }
+}

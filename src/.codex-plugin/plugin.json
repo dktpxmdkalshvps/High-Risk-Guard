@@ -1,0 +1,17 @@
+{
+  "name": "high-risk-guard",
+  "version": "0.1.0",
+  "description": "AI 에이전트(Codex)가 자금 이동 로직 수정, 프로덕션 배포 등 고위험 작업을 시도할 때 인간 관리자의 모바일 물리적 제스처 승인 없이는 진행하지 못하도록 막는 감사(Audit) 시스템",
+  "author": { "name": "high-risk-guard team" },
+  "license": "MIT",
+  "keywords": ["audit", "approval", "physical-gesture", "hackathon", "codex"],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "High-Risk Guard",
+    "shortDescription": "고위험 작업에 인간의 물리적 제스처 승인을 요구하는 감사 시스템",
+    "longDescription": "Codex가 자금 이동 로직 수정, 프로덕션 배포 등 사전 정의된 고위험 작업을 시도하면, MCP 서버가 이를 탐지해 작업을 일시 중단하고 모바일 승인 화면으로 승인 요청을 보낸다. 승인자는 위험 내용을 강제로 인지한 뒤, 무작위 목표 각도로 기기를 기울이는 물리적 제스처를 유지해야만 승인을 완료할 수 있다. 모든 승인/거부/타임아웃 이력은 해시 체이닝된 감사 로그로 남는다.",
+    "category": "security",
+    "capabilities": ["approval-gate", "audit-log"]
+  }
+}
